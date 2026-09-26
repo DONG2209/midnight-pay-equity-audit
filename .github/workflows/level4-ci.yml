@@ -1,0 +1,66 @@
+name: Level 4 — Pay-Equity Audit CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# Avoid piling up redundant runs when someone pushes several times in a row.
+concurrency:
+  group: level4-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-and-test:
+    name: Compile contract & run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install the Compact developer tools
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            https://github.com/midnightntwrk/compact/releases/latest/download/compact-installer.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Pin the Compact toolchain version
+        run: compact update 0.34.0
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Compile the Compact contract
+        # --skip-zk skips proving/verifying key generation (slow, ~500MB) —
+        # unit tests exercise circuit *logic* via compact-runtime's local
+        # simulator and don't need real proofs. `npm run compact:zk` in
+        # contract/package.json runs the full build for anyone who does.
+        run: npm run compact
+
+      - name: Type-check contract & frontend
+        run: npm run typecheck
+
+      - name: Run the test suites
+        run: npm run test
+
+      - name: Build contract package
+        run: npm run build --workspace contract
+
+      - name: Build frontend (verifier dApp)
+        run: npm run build --workspace frontend
+
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+          retention-days: 14
