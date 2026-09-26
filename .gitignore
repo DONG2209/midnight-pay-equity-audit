@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Compiled TypeScript output
+dist/
+build/
+
+# Compact compiler output (zkir, proving/verifying keys, generated TS bindings) —
+# regenerated on every install via `npm run compact`, and the full proving-key
+# build is hundreds of MB, so it does not belong in git.
+**/managed/
+
+# Vite / bundler output
+frontend/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env files (never commit real secrets or seed phrases)
+.env
+.env.local
+!.env.example
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+
+# Coverage
+coverage/
+*.tsbuildinfo
