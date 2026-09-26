@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Confidential Pay-Equity Audit</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <p class="eyebrow">Midnight · Level 4 · Confidential Pay-Equity Audit</p>
+        <h1>Prove your pay gap is within the law — without revealing a single salary</h1>
+        <p class="lede">
+          Under the EU Pay Transparency Directive, an unjustified gender pay gap of 5% or more in any
+          category of workers triggers a joint pay assessment. This dApp proves — in zero knowledge, with the
+          real compiled <code>pay-equity.compact</code> contract running client-side — that every category is
+          within the limit, disclosing only a single <strong>yes/no</strong> and a commitment to the payroll.
+          <a href="#privacy">See exactly what an observer can and cannot learn.</a>
+        </p>
+      </header>
+
+      <section class="card" id="wallet-card">
+        <h2>1 · Connect (as the employer)</h2>
+        <p class="muted">
+          Connect a Midnight wallet (e.g. Lace) through the DApp Connector API. The wallet signs one message;
+          that signature derives your <em>employer audit key</em> and payroll salt, so only you can author an
+          audit for this contract. No salary is ever involved in signing.
+        </p>
+        <div class="row">
+          <label class="muted" for="network-select">Network</label>
+          <select id="network-select"></select>
+          <button id="detect-wallet-btn">Detect wallets</button>
+          <span id="wallet-status" class="status">not connected</span>
+        </div>
+        <ul id="wallet-list" class="wallet-list"></ul>
+        <p class="muted" id="wallet-details" hidden></p>
+        <div class="row">
+          <button id="demo-mode-btn" class="link-btn">No wallet? Use demo mode with throwaway keys</button>
+        </div>
+      </section>
+
+      <section class="card" id="payroll-card">
+        <h2>2 · Your payroll <span class="pill private">private · stays in this browser</span></h2>
+        <p class="muted">
+          Enter each job category's average yearly salary and head count per gender. These numbers are the
+          contract's <em>witnesses</em>: they are used to compute the proof locally and are never written to the
+          ledger. Up to 6 categories.
+        </p>
+        <div class="table-wrap">
+          <table class="payroll" id="payroll-table">
+            <thead>
+              <tr>
+                <th>Job category</th>
+                <th>Men (count)</th>
+                <th>Men avg €/yr</th>
+                <th>Women (count)</th>
+                <th>Women avg €/yr</th>
+                <th>Gap</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="category-rows"></tbody>
+          </table>
+        </div>
+        <div class="row">
+          <button id="add-category-btn" class="link-btn">+ add category</button>
+          <span class="spacer"></span>
+          <label class="muted" for="period-input">Reporting period</label>
+          <input id="period-input" type="text" value="2027-H1" />
+        </div>
+        <p class="muted preview-line" id="preview-line">—</p>
+        <p class="muted" id="gate-hint">Locked: connect a wallet above (or choose demo mode) to run an audit.</p>
+        <div class="row">
+          <button id="run-audit-btn" disabled>Deploy contract &amp; run confidential audit</button>
+        </div>
+      </section>
+
+      <section class="card" id="result-card" hidden>
+        <h2>3 · The audit result <span class="pill public">public · on-chain</span></h2>
+        <div class="verdict" id="verdict">
+          <span id="verdict-badge" class="badge">—</span>
+          <span class="muted" id="verdict-sub"></span>
+        </div>
+        <dl class="result-grid">
+          <div><dt>Reporting period</dt><dd id="res-period">—</dd></div>
+          <div><dt>Categories covered</dt><dd id="res-categories">—</dd></div>
+          <div><dt>Compliance threshold</dt><dd id="res-threshold">—</dd></div>
+          <div><dt>Audit round</dt><dd id="res-round">—</dd></div>
+          <div class="wide"><dt>Payroll commitment</dt><dd id="res-commitment" class="mono">—</dd></div>
+          <div class="wide"><dt>Employer commitment</dt><dd id="res-employer" class="mono">—</dd></div>
+        </dl>
+        <p class="muted">
+          A regulator or employee reads exactly the row above — the yes/no and the commitments — and nothing
+          else. The commitment pins the employer to this exact payroll (binding) while revealing nothing about
+          the salaries (hiding), so the same data can later be checked without re-disclosing it.
+        </p>
+      </section>
+
+      <section class="card" id="log-card">
+        <h2>Activity log</h2>
+        <ol id="log-list" class="log"></ol>
+      </section>
+
+      <section class="card" id="observer-card">
+        <h2>What an on-chain observer literally sees</h2>
+        <p class="muted">This is the entire public ledger of the contract above — nothing more, nothing less.</p>
+        <pre id="observer-view" class="observer">run an audit to see its public ledger here</pre>
+      </section>
+
+      <section class="card" id="privacy">
+        <h2>Privacy model</h2>
+        <div class="privacy-grid">
+          <div>
+            <h3>An observer CAN learn</h3>
+            <ul>
+              <li>The compliance threshold this contract enforces (e.g. 5%)</li>
+              <li>The single yes/no verdict of the latest audit</li>
+              <li>The reporting-period label and how many categories were covered</li>
+              <li>A hiding commitment to the payroll, and a one-way hash of the employer's identity</li>
+              <li>How many audits have been run (the round counter)</li>
+            </ul>
+          </div>
+          <div>
+            <h3>An observer CANNOT learn</h3>
+            <ul>
+              <li>Any individual salary, or any category's average or total pay</li>
+              <li>The actual size of the gap — only whether it is within the limit</li>
+              <li>Which category (if any) came closest to failing</li>
+              <li>The head counts, so small categories can't be reverse-engineered</li>
+              <li>The employer's secret key — only a one-way hash of it is ever public</li>
+            </ul>
+          </div>
+        </div>
+        <p class="muted" id="going-live">
+          <strong>What runs where:</strong> your wallet connects and signs to derive your key, and the circuits
+          execute in this browser tab against an in-memory ledger — no transaction is submitted to a network in
+          this sandbox. Submitting these same circuit calls to Midnight Preprod additionally requires a deployed
+          contract address plus indexer and proof-server providers wired through
+          <code>@midnight-ntwrk/midnight-js-contracts</code> — see <code>scripts/deploy-preprod.ts</code> and
+          the README for the exact steps.
+        </p>
+      </section>
+
+      <footer class="foot">
+        <a href="https://docs.midnight.network" target="_blank" rel="noreferrer">Midnight docs</a>
+        ·
+        <a href="https://github.com/DONG2209" target="_blank" rel="noreferrer">Source &amp; README</a>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
