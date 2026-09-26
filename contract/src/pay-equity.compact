@@ -1,0 +1,185 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Confidential Pay-Equity Audit — proving EU pay-gap compliance without
+// revealing anyone's salary.
+//
+// The EU Pay Transparency Directive (2023/970) requires large employers to
+// report gender pay gaps per category of worker; an unjustified gap of 5% or
+// more in any category forces a joint pay assessment. Proving compliance today
+// means handing raw payroll to an auditor, or publishing per-category averages
+// that can expose an individual colleague's pay in small categories.
+//
+// This contract lets an employer keep its payroll entirely in PRIVATE state,
+// publish only a commitment to it, and prove in zero knowledge that the gender
+// pay gap is within the limit in EVERY job category — disclosing a single
+// yes/no and nothing else.
+//
+// Public (on-chain) state:
+//   - the compliance threshold in percent (set once, at deployment)
+//   - a commitment to the employer's identity (registerEmployer)
+//   - the LATEST audit result: a single boolean (compliant / not), the
+//     reporting-period label, the number of categories covered, a hiding
+//     commitment to the payroll that produced it, and an audit-round counter
+//
+// Private (off-chain) state, supplied as witnesses and NEVER written to the
+// ledger in the clear:
+//   - the per-category payroll aggregates (men's/women's salary totals & head
+//     counts)
+//   - a random salt that makes the payroll commitment hiding
+//   - the employer's secret key
+//
+// See ../../README.md ("Privacy model") for exactly what an on-chain observer
+// can and cannot learn.
+
+pragma language_version >= 0.16;
+
+import CompactStandardLibrary;
+
+// The audit covers up to this many job categories. Unused slots carry zero
+// head counts and are treated as trivially compliant, so an employer with
+// fewer categories simply leaves the tail empty.
+//
+// NB: keep this value in sync with CATEGORY_SLOTS in ../witnesses.ts.
+
+// One job category's aggregated payroll. Salary totals are whole currency
+// units (e.g. euros/year); head counts are numbers of employees. Widths are
+// bounded so the cross-multiplication below stays well inside the field:
+//   manTotal * womanCount  ->  Uint<48> * Uint<24> = Uint<72>
+//   Uint<72> * 100 and Uint<72> * threshold stay under ~Uint<80>.
+struct CategoryPayroll {
+  manTotal: Uint<48>;
+  manCount: Uint<24>;
+  womanTotal: Uint<48>;
+  womanCount: Uint<24>;
+}
+
+// What the payroll commitment binds to: the full per-category payroll plus a
+// random salt, so the commitment reveals nothing about the salaries (hiding)
+// yet pins the employer to exactly this data (binding).
+struct PayrollDigest {
+  salt: Bytes<32>;
+  categories: Vector<6, CategoryPayroll>;
+}
+
+export ledger thresholdPercent: Uint<8>;
+
+// persistentHash of the employer's secret key, set once via registerEmployer().
+// Lets submitAudit authenticate the employer without ever putting their secret
+// key (or a signature over it) on chain.
+export ledger employerCommitment: Bytes<32>;
+export ledger employerRegistered: Boolean;
+
+// The latest audit. Every field here is either a public parameter or an
+// explicit yes/no — never a salary.
+export ledger auditRound: Counter;
+export ledger hasResult: Boolean;
+export ledger lastCompliant: Boolean;
+export ledger lastPeriod: Opaque<'string'>;
+export ledger lastCategoryCount: Uint<8>;
+export ledger lastPayrollCommitment: Bytes<32>;
+
+witness employerSecretKey(): Bytes<32>;
+witness payrollSalt(): Bytes<32>;
+witness payroll(): Vector<6, CategoryPayroll>;
+
+constructor(threshold: Uint<8>) {
+  thresholdPercent = disclose(threshold);
+  employerRegistered = false;
+  hasResult = false;
+}
+
+// Mixes in this contract's own address so the same employer secret key yields
+// an UNRELATED commitment in a different deployment (no cross-deployment
+// linkability), while still matching itself within THIS deployment.
+circuit employerHash(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([
+    pad(32, "pay-equity:employer:"),
+    kernel.self().bytes,
+    sk
+  ]);
+}
+
+// Is one category within the pay-gap limit?
+//
+// The gender pay gap in a category is |avgMen - avgWomen| / max(avgMen,avgWomen)
+// where avgMen = manTotal/manCount, avgWomen = womanTotal/womanCount. Rather
+// than divide (impossible over integers without precision loss), we cross-
+// multiply: with a common positive denominator manCount*womanCount,
+//   avgMen  is proportional to  crossM = manTotal * womanCount
+//   avgWomen is proportional to  crossW = womanTotal * manCount
+// so the denominator cancels and the gap ratio equals
+//   |crossM - crossW| / max(crossM, crossW).
+// Compliant (<= threshold%) becomes, with no division at all:
+//   100 * |crossM - crossW|  <=  threshold * max(crossM, crossW)
+//
+// A category with no men or no women has no cross-gender comparison to make and
+// is treated as compliant. The test is direction-agnostic: it flags a gap that
+// disadvantages either gender.
+circuit categoryWithinLimit(c: CategoryPayroll, thr: Uint<8>): Boolean {
+  if (c.manCount == 0 || c.womanCount == 0) {
+    return true;
+  }
+  const crossM = c.manTotal * c.womanCount;
+  const crossW = c.womanTotal * c.manCount;
+  if (crossM >= crossW) {
+    return (crossM - crossW) * 100 <= crossM * (thr as Uint<8>);
+  } else {
+    return (crossW - crossM) * 100 <= crossW * (thr as Uint<8>);
+  }
+}
+
+// Binds whoever calls this first, right after deployment, as the employer, by
+// publishing a one-way commitment to their secret key. The key itself never
+// appears on chain.
+export circuit registerEmployer(): [] {
+  assert(!employerRegistered, "an employer is already registered");
+  employerCommitment = disclose(employerHash(employerSecretKey()));
+  employerRegistered = true;
+}
+
+// Run one confidential pay-equity audit over the private payroll and publish
+// ONLY the yes/no result plus a hiding commitment to the payroll.
+//
+// `period` is a human-readable reporting-period label (e.g. "2027-H1") and
+// `activeCategories` is how many category slots the employer actually filled —
+// both are public, for display; neither reveals any salary. Only the registered
+// employer (who can reproduce employerCommitment) may call this.
+export circuit submitAudit(
+  period: Opaque<'string'>,
+  activeCategories: Uint<8>,
+  threshold: Uint<8>
+): [] {
+  assert(employerRegistered, "no employer registered for this contract");
+  assert(
+    disclose(employerHash(employerSecretKey())) == employerCommitment,
+    "not authorized to submit an audit"
+  );
+  assert(activeCategories <= 6, "at most 6 categories are supported");
+  // The compliance bar is fixed at deployment; the caller must pass the same
+  // value it was deployed with. (Passing it as a public argument — rather than
+  // reading the ledger field straight into the private comparison below — is
+  // what lets the compiler prove exactly one bit about the payroll leaks.)
+  assert(threshold == thresholdPercent, "threshold does not match this contract");
+
+  const cats = payroll();
+  const compliant = disclose(
+    categoryWithinLimit(cats[0], threshold) &&
+    categoryWithinLimit(cats[1], threshold) &&
+    categoryWithinLimit(cats[2], threshold) &&
+    categoryWithinLimit(cats[3], threshold) &&
+    categoryWithinLimit(cats[4], threshold) &&
+    categoryWithinLimit(cats[5], threshold)
+  );
+
+  const digest = PayrollDigest {
+    salt: payrollSalt(),
+    categories: cats
+  };
+
+  lastCompliant = compliant;
+  lastPayrollCommitment = disclose(persistentHash<PayrollDigest>(digest));
+  lastPeriod = disclose(period);
+  lastCategoryCount = disclose(activeCategories);
+  hasResult = true;
+  auditRound.increment(1);
+}
