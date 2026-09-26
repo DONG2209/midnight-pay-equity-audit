@@ -1,0 +1,56 @@
+$ npm run test   —   51 tests (17 contract + 34 frontend), all passing
+
+# contract (npm run test --workspace contract)
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > deploys with the chosen threshold and no result yet 43ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > initializes deterministically from the same threshold 46ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > lets the first caller register as the employer, and only once 22ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > refuses an audit before an employer is registered 15ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > refuses an audit from anyone other than the registered employer 18ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > publishes COMPLIANT for a small (2%) gap 29ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > treats an exactly-5% gap as COMPLIANT (boundary, inclusive) 25ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > publishes NON-COMPLIANT for a 6% gap 24ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > flags a gap in either direction (women paid more than 5% above men) 25ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > measures the gap on averages, not totals (unequal head counts) 24ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > is COMPLIANT only if EVERY category is within the limit 24ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > ignores single-gender categories (no cross-gender gap to measure) 25ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > never writes a salary to the public ledger 26ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > produces a hiding commitment: same payroll, different salt -> different commitment 50ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > produces a binding commitment: different payroll -> different commitment 52ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > supports several reporting periods, bumping the audit round each time 33ms
+ ✓ contract/src/test/pay-equity.test.ts > Confidential Pay-Equity Audit contract > rejects an audit whose threshold does not match the deployed one 17ms
+
+# frontend (npm run test --workspace frontend)
+ ✓ src/errors.test.ts > describeError > reads code and reason off a DApp Connector API error 2ms
+ ✓ src/errors.test.ts > describeError > falls back to the message of an ordinary Error 0ms
+ ✓ src/errors.test.ts > describeError > handles plain-object rejections, which String() would turn into "[object Object]" 0ms
+ ✓ src/errors.test.ts > describeError > stringifies anything else 0ms
+ ✓ src/payroll.test.ts > toContractCategory > turns per-gender averages and counts into salary totals 2ms
+ ✓ src/payroll.test.ts > categoryWithinLimit (mirror of the circuit) > accepts a small (2%) gap 0ms
+ ✓ src/payroll.test.ts > categoryWithinLimit (mirror of the circuit) > accepts an exactly-5% gap (inclusive boundary) 0ms
+ ✓ src/payroll.test.ts > categoryWithinLimit (mirror of the circuit) > rejects a 6% gap 0ms
+ ✓ src/payroll.test.ts > categoryWithinLimit (mirror of the circuit) > is direction-agnostic (women paid more than 5% above men fails too) 0ms
+ ✓ src/payroll.test.ts > categoryWithinLimit (mirror of the circuit) > measures averages, not totals, when head counts differ 0ms
+ ✓ src/payroll.test.ts > categoryWithinLimit (mirror of the circuit) > treats a single-gender category as compliant (no gap to measure) 0ms
+ ✓ src/payroll.test.ts > verdictFor > reports the gap percentage and who it favours 0ms
+ ✓ src/payroll.test.ts > verdictFor > marks a single-gender category as not comparable 0ms
+ ✓ src/payroll.test.ts > isPayrollCompliant > is compliant only when every category is within the limit 0ms
+ ✓ src/payroll.test.ts > activeCount > counts only categories that carry employees 0ms
+ ✓ src/identity.test.ts > deriveIdentity > derives a 32-byte employer key and salt from the wallet signature 6ms
+ ✓ src/identity.test.ts > deriveIdentity > is deterministic: the same signature always yields the same values 2ms
+ ✓ src/identity.test.ts > deriveIdentity > gives different wallets (different signatures) unrelated keys 1ms
+ ✓ src/identity.test.ts > deriveIdentity > keeps the employer key and salt of one wallet unrelated (domain separation) 1ms
+ ✓ src/identity.test.ts > deriveIdentity > asks the wallet to sign the fixed, human-readable message 1ms
+ ✓ src/identity.test.ts > deriveIdentity > falls back to random values, and says why, when the user rejects the prompt 1ms
+ ✓ src/identity.test.ts > deriveIdentity > refuses to hash an unusably short signature into a guessable key 0ms
+ ✓ src/identity.test.ts > randomIdentity > produces fresh, unrelated values on every call 0ms
+ ✓ src/app.dom.test.ts > verifier app > starts locked: the audit cannot run before a wallet is connected 221ms
+ ✓ src/app.dom.test.ts > verifier app > reports when no Midnight wallet is installed (e.g. only Freighter/MetaMask) 23ms
+ ✓ src/app.dom.test.ts > verifier app > seeds an editable payroll and previews compliance locally 21ms
+ ✓ src/app.dom.test.ts > verifier app > connects a wallet, derives the employer key, and unlocks the audit 72ms
+ ✓ src/app.dom.test.ts > verifier app > runs a real confidential audit and publishes COMPLIANT for a within-limit payroll 157ms
+ ✓ src/app.dom.test.ts > verifier app > never writes a salary to the public ledger the observer sees 147ms
+ ✓ src/app.dom.test.ts > verifier app > publishes NOT COMPLIANT once the payroll breaches the 5% limit 151ms
+ ✓ src/app.dom.test.ts > verifier app > still unlocks, with a visible warning, if the wallet refuses to sign 76ms
+ ✓ src/app.dom.test.ts > verifier app > shows a wallet rejection right in the wallet card, not just in the log 77ms
+ ✓ src/app.dom.test.ts > verifier app > says it is waiting for the wallet while the connect prompt is still open 23ms
+ ✓ src/app.dom.test.ts > verifier app > demo mode unlocks and runs an audit without any wallet 83ms
