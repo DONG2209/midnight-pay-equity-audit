@@ -1,0 +1,29 @@
+{
+  "name": "@midnight-level4/pay-equity-contract",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "compact": "compact compile --skip-zk src/pay-equity.compact src/managed/pay-equity",
+    "compact:zk": "compact compile src/pay-equity.compact src/managed/pay-equity",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:compile": "npm run compact && vitest run",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/pay-equity.compact ./dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.19.0"
+  },
+  "devDependencies": {
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
+    "typescript": "^5.6.0",
+    "vitest": "^5.0.0"
+  }
+}
