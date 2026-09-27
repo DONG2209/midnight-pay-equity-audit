@@ -201,11 +201,24 @@ async function buildWallet(seed: string) {
 }
 
 async function waitForFunds(wallet: any): Promise<void> {
-  // The wallet exposes an RxJS `state$` stream; wait for a non-zero balance.
+  // The wallet exposes an RxJS state stream. On the first emission we print the
+  // address to fund; then we wait until any balance is non-zero.
+  let printed = false;
   await new Promise<void>((resolve) => {
     const sub = wallet.state().subscribe((s: any) => {
-      const balance = s?.balances?.[Object.keys(s.balances ?? {})[0]] ?? 0n;
-      if (balance && BigInt(balance) > 0n) {
+      if (!printed && s?.address) {
+        console.log(`\n💰 Fund this deploy wallet, then leave the script running:`);
+        console.log(`   Address: ${s.address}`);
+        console.log(`   Faucet:  https://midnight-tmnight-preprod.nethermind.dev/`);
+        console.log(`   (Waiting for tNIGHT/tDUST to arrive and sync…)\n`);
+        printed = true;
+      }
+      const balances = s?.balances ?? {};
+      const total = Object.values(balances).reduce(
+        (acc: bigint, b: any) => acc + BigInt(b ?? 0),
+        0n,
+      );
+      if (total > 0n) {
         sub.unsubscribe?.();
         resolve();
       }
