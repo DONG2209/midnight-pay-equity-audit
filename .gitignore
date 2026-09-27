@@ -31,3 +31,8 @@ npm-debug.log*
 # Coverage
 coverage/
 *.tsbuildinfo
+
+# Preprod deploy secrets (seed) — never commit
+.env.preprod
+.env.*
+!.env.example
