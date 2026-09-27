@@ -276,10 +276,11 @@ full while writing this submission.
 
 ## Live demo
 
-> ⏳ _to be added_ — deploys straight from this repo via `vercel.json` /
-> `scripts/vercel-build.sh` (installs the Compact toolchain, compiles the
-> contract, builds the frontend — the same steps as CI). Connect Lace (or pick
-> demo mode), enter a payroll, and run a confidential audit.
+**<https://midnight-pay-equity-audit-frontend.vercel.app/>** — deployed straight
+from this repo via `vercel.json` / `scripts/vercel-build.sh` (installs the Compact
+toolchain, compiles the contract, builds the frontend — the same steps as CI).
+Connect Lace (or pick demo mode), enter a payroll, and run a confidential audit;
+the whole public ledger (verdict + commitment, no salaries) updates on screen.
 
 ## Product profile (X)
 
