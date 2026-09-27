@@ -297,8 +297,8 @@ the whole public ledger (verdict + commitment, no salaries) updates on screen.
 
 ## Product profile (X)
 
-> ⏳ _to be added_ — the product's public build-in-public profile on X:
-> **[@your_handle](https://x.com/your_handle)**.
+The product's public build-in-public profile on X:
+**[@Xalahehe](https://x.com/Xalahehe)**.
 
 ## Demo video
 
@@ -315,7 +315,7 @@ the whole public ledger (verdict + commitment, no salaries) updates on screen.
 | Live on Preprod (verifiable address) | ⏳ deploy via [`scripts/deploy-preprod.ts`](./scripts/deploy-preprod.ts), then paste the address above |
 | Documentation (README + setup + usage) | ✅ this file + [PROPOSAL.md](./PROPOSAL.md) |
 | CI/CD pipeline with passing runs | ✅ [`level4-ci.yml`](./.github/workflows/level4-ci.yml) — see badge |
-| Product X profile, linked in README | ⏳ see [Product profile (X)](#product-profile-x) |
+| Product X profile, linked in README | ✅ [@Xalahehe](https://x.com/Xalahehe) |
 | Demo video of the MVP | ⏳ see [Demo video](#demo-video) |
 | Minimum 15 meaningful commits | ✅ see `git log` |
 | Privacy model documented | ✅ see [Privacy model](#privacy-model) |
