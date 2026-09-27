@@ -256,14 +256,27 @@ on **Midnight Preprod** with a verifiable contract address needs infrastructure
 that can't live in a browser tab or a CI runner — a funded wallet, a proof
 server, and an indexer — so it's a scripted, deliberate step:
 
-1. Run a proof server and point at a Preprod indexer (see
-   [`frontend/.env.example`](./frontend/.env.example) for the variables).
-2. Build the full ZK artifacts once: `npm run compact:zk --workspace contract`.
-3. Fund a Preprod wallet from the faucet and run
-   [`scripts/deploy-preprod.ts`](./scripts/deploy-preprod.ts) — its header lists
-   the exact deps and commands. It deploys the contract, then calls
-   `registerEmployer` and `submitAudit`.
-4. Paste the printed contract address into `frontend/.env` and the box below.
+1. **Run a proof server locally** (it sees your private payroll in cleartext, so
+   it must stay on your machine):
+   ```bash
+   docker run -p 6300:6300 midnightnetwork/proof-server -- \
+     'midnight-proof-server --network preprod'
+   ```
+2. **Build the full ZK artifacts once** (the sandbox build skips these):
+   `npm run compact:zk --workspace contract`.
+3. **Fund a Preprod wallet:** request tNIGHT from the
+   [faucet](https://midnight-tmnight-preprod.nethermind.dev/), register it for
+   tDUST in your wallet, and put the seed in `.env.preprod` (git-ignored).
+4. **Deploy:** `npx tsx --env-file=.env.preprod scripts/deploy-preprod.ts` —
+   [`scripts/deploy-preprod.ts`](./scripts/deploy-preprod.ts) runs a local
+   preflight, deploys the contract, then files the first audit
+   (`registerEmployer` + `submitAudit`) and prints the address.
+5. **Paste the printed contract address** into `frontend/.env` and the box below.
+
+Preprod endpoints (baked into the script as defaults): indexer
+`https://indexer.preprod.midnight.network/api/v4/graphql`, indexer WS
+`wss://indexer.preprod.midnight.network/api/v4/graphql/ws`, node
+`https://rpc.preprod.midnight.network`, proof server `http://localhost:6300`.
 
 > **Live Preprod contract address:** ⏳ _to be added after deployment_
 > `addr_...`

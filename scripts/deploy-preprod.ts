@@ -4,101 +4,216 @@
 //
 // This is the ONE step the in-browser sandbox (frontend/) and the test suite
 // deliberately stop short of, because it needs infrastructure that can't live
-// in a browser tab or a CI runner: a funded wallet, a proof server, and an
-// indexer. Everything else in this repo — the contract, its circuits, the
+// in a browser tab or a CI runner: a funded wallet, a local proof server, and
+// an indexer. Everything else in this repo — the contract, its circuits, the
 // commitment scheme, the compliance logic — is exactly what runs here.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// PREREQUISITES (see README.md § "Going to Preprod" for the full walkthrough)
-//   1. A proof server reachable at $PROOF_SERVER_URI, e.g. run locally:
+// PREREQUISITES
+//
+//   1. Proof server (runs LOCALLY — it sees your private payroll in cleartext):
 //        docker run -p 6300:6300 midnightnetwork/proof-server -- \
 //          'midnight-proof-server --network preprod'
-//   2. A Preprod indexer (public data provider) at $INDEXER_URI / $INDEXER_WS_URI.
-//   3. A funded Preprod wallet seed in $WALLET_SEED (get tДN from the faucet).
-//   4. Install the deploy-only dependencies (kept out of the app's package.json
-//      so the browser bundle and CI stay lean):
-//        npm i -D @midnight-ntwrk/midnight-js-contracts \
-//                 @midnight-ntwrk/midnight-js-node-zk-config-provider \
-//                 @midnight-ntwrk/midnight-js-indexer-public-data-provider \
-//                 @midnight-ntwrk/midnight-js-http-client-proof-provider \
-//                 @midnight-ntwrk/midnight-js-level-private-state-provider \
-//                 @midnight-ntwrk/wallet @midnight-ntwrk/wallet-api tsx
-//   5. Build the full ZK artifacts (proving/verifying keys) once — the sandbox
+//
+//   2. A Preprod wallet seed in .env.preprod (this file is git-ignored):
+//        WALLET_SEED=<64-hex-char seed>
+//      Fund it: request tNIGHT from the faucet, then register it for tDUST
+//      generation in your wallet.
+//        Faucet:  https://midnight-tmnight-preprod.nethermind.dev/
+//
+//   3. Build the full ZK artifacts (proving/verifying keys) once — the sandbox
 //      build skips these for speed:
 //        npm run compact:zk --workspace contract
-//   6. Run it:
-//        npx tsx scripts/deploy-preprod.ts
 //
-// The provider stack below follows Midnight's own examples (Bulletin Board /
-// Counter tutorials at https://docs.midnight.network). This SDK is pre-1.0 and
-// its provider constructors move between releases: if an import path or option
-// name here has drifted by the time you run it, cross-check it against the
-// tutorial for the midnight-js version in your package-lock and adjust. The
-// contract itself — imported straight from the built package — does not change.
+//   4. Install the deploy-only dependencies (kept out of the app's package.json
+//      so the browser bundle and CI stay lean). Pin to the versions in your
+//      support matrix — this repo was written against midnight-js 4.1.1:
+//        npm i -D \
+//          @midnight-ntwrk/midnight-js-contracts@4.1.1 \
+//          @midnight-ntwrk/midnight-js-types@4.1.1 \
+//          @midnight-ntwrk/midnight-js-network-id@4.1.1 \
+//          @midnight-ntwrk/midnight-js-indexer-public-data-provider@4.1.1 \
+//          @midnight-ntwrk/midnight-js-node-zk-config-provider@4.1.1 \
+//          @midnight-ntwrk/midnight-js-http-client-proof-provider@4.1.1 \
+//          @midnight-ntwrk/midnight-js-level-private-state-provider@4.1.1 \
+//          @midnight-ntwrk/wallet @midnight-ntwrk/wallet-api \
+//          @midnight-ntwrk/zswap tsx dotenv
+//
+//   5. Run it:
+//        npx tsx --env-file=.env.preprod scripts/deploy-preprod.ts
+//
+// PREPROD ENDPOINTS (https://docs.midnight.network/guides/networks-and-environments)
+//   Indexer   : https://indexer.preprod.midnight.network/api/v4/graphql
+//   Indexer WS: wss://indexer.preprod.midnight.network/api/v4/graphql/ws
+//   Node RPC  : https://rpc.preprod.midnight.network
+//   Proof srv : http://localhost:6300
+//
+// A NOTE ON VERSIONS: midnight-js is pre-1.0 and its wallet-construction and
+// provider APIs move between releases. The DEPLOY block below follows the
+// current Bulletin Board tutorial (docs.midnight.network/tutorials/bboard) and
+// the midnightntwrk/example-bboard repo — cross-check the parts marked
+// "VERIFY" against the example for the exact version in your package-lock if an
+// import path or option name has drifted. The contract itself, imported straight
+// from the built package, does not change.
 //
 // This file is intentionally NOT part of the app's tsconfig `include`, so the
-// commented-out imports don't need to be installed for `npm run build`/`test`.
+// deploy-only imports don't need to be installed for `npm run build`/`test`.
 
 /* eslint-disable */
 // @ts-nocheck
 
-import { AuditClient, createEmployerPrivateState, type CategoryPayroll } from '../contract/src/index.js';
+import { webcrypto } from 'node:crypto';
 
-// --- The payroll to audit. Fill in from your real (private) HR data. ---------
-// Averages are in whole currency units per year; counts are head counts. This
-// data stays on THIS machine — only the yes/no result and a commitment go on
-// chain.
+import { setNetworkId, NetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
+import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
+import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
+import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
+import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
+
+// The contract, its witnesses, and the local client — from THIS repo.
+import {
+  AuditClient,
+  Contract,
+  createEmployerPrivateState,
+  witnesses,
+  type CategoryPayroll,
+} from '../contract/src/index.js';
+
+// ── Configuration ────────────────────────────────────────────────────────────
+
+setNetworkId(NetworkId.Preprod ?? ('preprod' as any));
+
+const CONFIG = {
+  indexer: process.env.INDEXER_URI ?? 'https://indexer.preprod.midnight.network/api/v4/graphql',
+  indexerWS: process.env.INDEXER_WS_URI ?? 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws',
+  node: process.env.NODE_URI ?? 'https://rpc.preprod.midnight.network',
+  proofServer: process.env.PROOF_SERVER_URI ?? 'http://localhost:6300',
+  zkConfigPath: new URL('../contract/src/managed/pay-equity', import.meta.url).pathname,
+  privateStateStoreName: 'pay-equity',
+  privateStateId: 'pay-equity',
+};
+
 const THRESHOLD_PERCENT = 5n;
 const REPORTING_PERIOD = process.env.REPORTING_PERIOD ?? '2027-H1';
 
+// ── The payroll to audit (PRIVATE — stays on this machine) ───────────────────
+// Averages × counts, entered as salary totals + head counts per gender. Only the
+// yes/no verdict and a commitment ever go on chain.
 const PAYROLL: CategoryPayroll[] = [
   { manTotal: 1_104_000n, manCount: 12n, womanTotal: 720_000n, womanCount: 8n }, // Engineering
   { manTotal: 420_000n, manCount: 6n, womanTotal: 612_000n, womanCount: 9n }, //    Sales
   { manTotal: 220_000n, manCount: 4n, womanTotal: 540_000n, womanCount: 10n }, //   Support
 ];
 
+// ── Main ─────────────────────────────────────────────────────────────────────
+
 async function main() {
-  // Local-simulator sanity check first, so an obviously non-compliant payroll
-  // never wastes a real deploy. (This runs the exact circuits, off chain.)
   const seed = required('WALLET_SEED');
-  const employerKey = deriveEmployerKey(seed);
-  const preflight = await AuditClient.deploy(
-    THRESHOLD_PERCENT,
-    createEmployerPrivateState(employerKey, PAYROLL),
-  );
+  const employerKey = await deriveEmployerKey(seed);
+  const salt = await deriveSalt(seed);
+  const initialPrivateState = createEmployerPrivateState(employerKey, PAYROLL, salt);
+
+  // 1) Local preflight (real circuits, no chain), so an obviously non-compliant
+  //    payroll never wastes a real deploy.
+  const preflight = await AuditClient.deploy(THRESHOLD_PERCENT, initialPrivateState);
   await preflight.registerEmployer();
   await preflight.submitAudit(REPORTING_PERIOD, THRESHOLD_PERCENT);
   console.log(`Preflight (local): compliant = ${preflight.getLedger().lastCompliant}`);
 
-  // --- Real Preprod deploy. Uncomment once the deps in the header are installed.
-  //
-  // import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
-  // import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
-  // import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
-  // import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
-  // import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
-  // import { witnesses } from '../contract/src/witnesses.js';
-  //
-  // const providers = {
-  //   publicDataProvider: indexerPublicDataProvider(required('INDEXER_URI'), required('INDEXER_WS_URI')),
-  //   proofProvider: httpClientProofProvider(required('PROOF_SERVER_URI')),
-  //   zkConfigProvider: new NodeZkConfigProvider('contract/src/managed/pay-equity'),
-  //   privateStateProvider: levelPrivateStateProvider({ privateStateStoreName: 'pay-equity' }),
-  //   // walletProvider + midnightProvider come from a @midnight-ntwrk/wallet built
-  //   // from WALLET_SEED on 'preprod' — see the tutorial for the current wiring.
-  // };
-  //
-  // const deployed = await deployContract(providers, {
-  //   privateStateId: 'pay-equity',
-  //   contract: new Contract(witnesses),
-  //   initialPrivateState: createEmployerPrivateState(employerKey, PAYROLL),
-  //   args: [THRESHOLD_PERCENT],
-  // });
-  // const address = deployed.deployTxData.public.contractAddress;
-  // console.log(`Deployed to Preprod: ${address}`);
-  // // Then: registerEmployer() and submitAudit(REPORTING_PERIOD, THRESHOLD_PERCENT)
-  // // via deployed.callTx, and paste `address` into frontend/.env + the README.
+  // 2) Real Preprod deploy.
+  const wallet = await buildWallet(seed); // VERIFY: see header note on versions
+  try {
+    const zkConfigProvider = new NodeZkConfigProvider<'registerEmployer' | 'submitAudit'>(
+      CONFIG.zkConfigPath,
+    );
+
+    const providers = {
+      privateStateProvider: levelPrivateStateProvider({
+        privateStateStoreName: CONFIG.privateStateStoreName,
+        signingKeyStoreName: `${CONFIG.privateStateStoreName}-signing-keys`,
+        privateStoragePasswordProvider: () => required('PRIVATE_STORE_PASSWORD'), // 16+ chars
+        accountId: seed,
+      }),
+      publicDataProvider: indexerPublicDataProvider(CONFIG.indexer, CONFIG.indexerWS),
+      zkConfigProvider,
+      proofProvider: httpClientProofProvider(CONFIG.proofServer, zkConfigProvider),
+      // MidnightWalletProvider implements both WalletProvider and MidnightProvider.
+      walletProvider: wallet.provider,
+      midnightProvider: wallet.provider,
+    };
+
+    const deployed = await deployContract(providers, {
+      contract: new Contract(witnesses),
+      privateStateId: CONFIG.privateStateId,
+      initialPrivateState,
+      args: [THRESHOLD_PERCENT], // constructor(threshold)
+    });
+
+    const address = deployed.deployTxData.public.contractAddress;
+    console.log(`\n✅ Deployed to Preprod: ${address}`);
+    console.log(`   Explorer: https://midnightexplorer.com/  (search this address)\n`);
+
+    // 3) File the first audit on chain.
+    await deployed.callTx.registerEmployer();
+    const active = BigInt(PAYROLL.length);
+    await deployed.callTx.submitAudit(REPORTING_PERIOD, active, THRESHOLD_PERCENT);
+    console.log(`Audit filed on chain for period ${REPORTING_PERIOD}.`);
+
+    console.log(`\nNext: paste this into frontend/.env and the README:`);
+    console.log(`  VITE_CONTRACT_ADDRESS=${address}`);
+  } finally {
+    await wallet.close?.();
+  }
 }
+
+// ── Wallet construction (VERIFY against example-bboard for your version) ──────
+// Follows the current tutorial: FluentWalletBuilder from a seed, wait for funds,
+// then a MidnightWalletProvider that balances/signs/submits transactions.
+async function buildWallet(seed: string) {
+  const { FluentWalletBuilder } = await import('@midnight-ntwrk/wallet');
+  const builder = FluentWalletBuilder.forEnvironment({
+    indexer: CONFIG.indexer,
+    indexerWS: CONFIG.indexerWS,
+    node: CONFIG.node,
+    proofServer: CONFIG.proofServer,
+    networkId: 'preprod',
+  });
+  const { wallet } = await builder.withSeed(seed).buildWithoutStarting();
+  wallet.start();
+
+  // Wait until the wallet has synced and has funds to pay fees.
+  await waitForFunds(wallet);
+
+  // The example wraps `wallet` in a MidnightWalletProvider that implements both
+  // WalletProvider (coinPublicKey + balanceTx) and MidnightProvider (submitTx).
+  // Import path / class name may differ by version — grep example-bboard's
+  // `common-types`/`api` for `MidnightWalletProvider`.
+  const { MidnightWalletProvider } = await import('@midnight-ntwrk/wallet');
+  const provider = await MidnightWalletProvider.build(wallet);
+
+  return {
+    provider,
+    close: async () => {
+      await wallet.close?.();
+    },
+  };
+}
+
+async function waitForFunds(wallet: any): Promise<void> {
+  // The wallet exposes an RxJS `state$` stream; wait for a non-zero balance.
+  await new Promise<void>((resolve) => {
+    const sub = wallet.state().subscribe((s: any) => {
+      const balance = s?.balances?.[Object.keys(s.balances ?? {})[0]] ?? 0n;
+      if (balance && BigInt(balance) > 0n) {
+        sub.unsubscribe?.();
+        resolve();
+      }
+    });
+  });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function required(name: string): string {
   const v = process.env[name];
@@ -106,14 +221,16 @@ function required(name: string): string {
   return v;
 }
 
-// Placeholder key derivation for the preflight. In production the employer key
-// is derived from the wallet signature exactly as the frontend does
-// (frontend/src/identity.ts); here we just need a deterministic 32 bytes.
-function deriveEmployerKey(seed: string): Uint8Array {
-  const key = new Uint8Array(32);
-  for (let i = 0; i < seed.length && i < 32; i++) key[i] = seed.charCodeAt(i) & 0xff;
-  return key;
+// The employer key and salt are derived deterministically from the wallet seed
+// (SHA-256 with a domain tag), mirroring how the frontend derives them from a
+// wallet signature — so re-running with the same seed reproduces the same
+// employer identity and payroll commitment.
+async function sha256(tag: string, seed: string): Promise<Uint8Array> {
+  const bytes = new TextEncoder().encode(`${tag}\u0000${seed}`);
+  return new Uint8Array(await webcrypto.subtle.digest('SHA-256', bytes));
 }
+const deriveEmployerKey = (seed: string) => sha256('pay-equity:employer', seed);
+const deriveSalt = (seed: string) => sha256('pay-equity:salt', seed);
 
 main().catch((err) => {
   console.error(err);
